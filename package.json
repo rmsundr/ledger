@@ -1,0 +1,29 @@
+{
+  "name": "ledgerdesk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LedgerDesk — local-first accounting and inventory ERP",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run rebuild:electron && npm run dev -w @ledgerdesk/desktop",
+    "build": "npm run build -w @ledgerdesk/db && npm run build -w @ledgerdesk/core && npm run build -w @ledgerdesk/reports && npm run build -w @ledgerdesk/tally-import && npm run build -w @ledgerdesk/desktop",
+    "test": "npm run rebuild:node && npm run test -w @ledgerdesk/core && npm run test -w @ledgerdesk/db && npm run test -w @ledgerdesk/reports && npm run test -w @ledgerdesk/tally-import",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run typecheck",
+    "rebuild:electron": "node scripts/rebuild-native.mjs electron",
+    "rebuild:node": "node scripts/rebuild-native.mjs node"
+  },
+
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true,
+    "electron@33.4.11": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.21.5": true
+  }
+}
