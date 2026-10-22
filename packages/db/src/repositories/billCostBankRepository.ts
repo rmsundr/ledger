@@ -1,6 +1,6 @@
 import type { Db } from '../connection.js';
 import { newId } from '../ids.js';
-import type { CostCategoryRecord, CostCentreRecord, VoucherBankAllocationRecord } from '../types.js';
+import type { CostCategoryRecord, CostCentreRecord, InterestRuleRecord, VoucherBankAllocationRecord } from '../types.js';
 
 export interface BillOutstandingItem {
   party_ledger_id: string;
@@ -159,5 +159,142 @@ export class BillCostBankRepository {
       SET bank_date = ?, cheque_status = 'Cleared'
       WHERE id = ?
     `).run(clearanceDate, allocationId);
+  }
+
+  /**
+   * Fetch every bill allocation posted against a party, for settlement
+   * computation by the bill-wise engine.
+   */
+  getPartyAllocations(
+    companyId: string,
+    partyLedgerId: string,
+    asOfDate?: string,
+  ): {
+    id: string;
+    voucher_id: string;
+    date: string;
+    ref_type: string;
+    ref_name: string;
+    amount: number;
+    is_debit: number;
+    due_date: string | null;
+  }[] {
+    const params: unknown[] = [companyId, partyLedgerId];
+    let dateClause = '';
+    if (asOfDate) {
+      dateClause = 'AND v.date <= ?';
+      params.push(asOfDate);
+    }
+
+    return this.db
+      .prepare(`
+        SELECT vba.id, vba.voucher_id, v.date, vba.ref_type, vba.ref_name,
+               vba.amount, vba.is_debit, vba.due_date
+        FROM voucher_bill_allocation vba
+        JOIN voucher v ON vba.voucher_id = v.id
+        WHERE vba.company_id = ?
+          AND vba.party_ledger_id = ?
+          AND v.deleted_at IS NULL
+          AND v.is_cancelled = 0
+          AND v.is_optional = 0
+          ${dateClause}
+        ORDER BY v.date ASC, v.created_at ASC
+      `)
+      .all(...params) as any[];
+  }
+
+  /**
+   * List every party that has bill allocations, with their open balance.
+   */
+  listPartiesWithBills(companyId: string): {
+    party_ledger_id: string;
+    party_name: string;
+    total_pending: number;
+  }[] {
+    return this.db
+      .prepare(`
+        SELECT
+          l.id AS party_ledger_id,
+          l.name AS party_name,
+          COALESCE(SUM(
+            CASE WHEN vba.ref_type IN ('New Ref', 'Advance') THEN vba.amount ELSE 0 END
+            - CASE WHEN vba.ref_type IN ('Agst Ref', 'On Account') THEN vba.amount ELSE 0 END
+          ), 0) AS total_pending
+        FROM ledger l
+        JOIN voucher_bill_allocation vba ON vba.party_ledger_id = l.id
+        JOIN voucher v ON vba.voucher_id = v.id AND v.is_cancelled = 0 AND v.is_optional = 0 AND v.deleted_at IS NULL
+        WHERE l.company_id = ? AND l.deleted_at IS NULL
+        GROUP BY l.id
+        HAVING total_pending <> 0
+        ORDER BY ABS(total_pending) DESC
+      `)
+      .all(companyId) as any[];
+  }
+
+  // Interest rules
+
+  listInterestRules(companyId: string): InterestRuleRecord[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM interest_rule WHERE company_id = ? ORDER BY ledger_id`,
+      )
+      .all(companyId) as InterestRuleRecord[];
+  }
+
+  getInterestRule(companyId: string, ledgerId: string): InterestRuleRecord | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM interest_rule WHERE company_id = ? AND ledger_id = ?`,
+      )
+      .get(companyId, ledgerId) as InterestRuleRecord | undefined;
+  }
+
+  /**
+   * Create or replace the interest rule for a ledger.
+   * `interest_rule` is unique on (company_id, ledger_id), so an existing rule
+   * is updated rather than duplicated.
+   */
+  upsertInterestRule(input: {
+    companyId: string;
+    ledgerId: string;
+    ratePercent: number;
+    interestStyle: InterestRuleRecord['interest_style'];
+    calculateFrom: InterestRuleRecord['calculate_from'];
+    graceDays: number;
+    isReceivable?: boolean;
+  }): InterestRuleRecord {
+    const id = newId();
+    this.db
+      .prepare(
+        `INSERT INTO interest_rule
+           (id, company_id, ledger_id, rate_percent, interest_style, calculate_from, grace_days, is_receivable)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (company_id, ledger_id)
+         DO UPDATE SET rate_percent = excluded.rate_percent,
+                       interest_style = excluded.interest_style,
+                       calculate_from = excluded.calculate_from,
+                       grace_days = excluded.grace_days,
+                       is_receivable = excluded.is_receivable`,
+      )
+      .run(
+        id,
+        input.companyId,
+        input.ledgerId,
+        input.ratePercent,
+        input.interestStyle,
+        input.calculateFrom,
+        input.graceDays,
+        input.isReceivable === false ? 0 : 1,
+      );
+
+    const rule = this.getInterestRule(input.companyId, input.ledgerId);
+    if (!rule) throw new Error('Interest rule was not persisted');
+    return rule;
+  }
+
+  deleteInterestRule(companyId: string, ledgerId: string): void {
+    this.db
+      .prepare(`DELETE FROM interest_rule WHERE company_id = ? AND ledger_id = ?`)
+      .run(companyId, ledgerId);
   }
 }

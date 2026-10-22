@@ -6,7 +6,6 @@ interface Props {
   session: OpenSession;
   onNavigate: (screen: Screen) => void;
   onShut: () => void;
-  onQuit: () => void;
   onChangeDate: () => void;
 }
 
@@ -30,7 +29,7 @@ const MENU: MenuItem[] = [
   { key: '0', label: 'Quit / Shut Company', shortcut: 'Q', screen: null },
 ];
 
-export function GatewayScreen({ session, onNavigate, onShut, onQuit, onChangeDate }: Props) {
+export function GatewayScreen({ session, onNavigate, onShut, onChangeDate }: Props) {
   const [index, setIndex] = useState(0);
 
   const activate = (i: number) => {

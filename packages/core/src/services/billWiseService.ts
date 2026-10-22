@@ -5,6 +5,12 @@ import {
   type CostCentreRecord,
   type Db,
 } from '@ledgerdesk/db';
+import {
+  previewAllocation,
+  settleBills,
+  type RefType,
+  type SettlementResult,
+} from './billSettlement.js';
 
 export interface AgeingAnalysisBucket {
   party_name: string;
@@ -89,5 +95,55 @@ export class BillWiseService {
 
   setBankClearanceDate(allocationId: string, clearanceDate: string): void {
     this.repo.setBankClearanceDate(allocationId, clearanceDate);
+  }
+
+  /**
+   * Compute the settlement position for a party: which bills are still open,
+   * how much is pending on each, and how much of a payment could not be
+   * matched to any open bill.
+   */
+  getPartySettlement(companyId: string, partyLedgerId: string, asOfDate?: string): SettlementResult {
+    const allocations = this.repo.getPartyAllocations(companyId, partyLedgerId, asOfDate);
+    return settleBills(
+      allocations.map((a) => ({
+        id: a.id,
+        voucherId: a.voucher_id,
+        date: a.date,
+        refType: a.ref_type as RefType,
+        refName: a.ref_name,
+        amount: a.amount,
+        isDebit: a.is_debit,
+        dueDate: a.due_date,
+      })),
+    );
+  }
+
+  /**
+   * Preview how a payment of `amount` would be allocated across a party's
+   * open bills, oldest due date first.
+   */
+  previewPaymentAllocation(
+    companyId: string,
+    partyLedgerId: string,
+    amount: number,
+    asOfDate?: string,
+  ): { refName: string; amount: number }[] {
+    const settlement = this.getPartySettlement(companyId, partyLedgerId, asOfDate);
+    return previewAllocation(
+      settlement.openBills.map((b) => ({
+        refName: b.refName,
+        pending: b.pending,
+        dueDate: b.dueDate,
+        date: b.date,
+      })),
+      amount,
+    );
+  }
+
+  /**
+   * List every party with bill allocations and their open balance.
+   */
+  listPartiesWithBills(companyId: string) {
+    return this.repo.listPartiesWithBills(companyId);
   }
 }

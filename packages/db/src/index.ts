@@ -9,6 +9,13 @@ export { InventoryRepository } from './repositories/inventoryRepository.js';
 export { BillCostBankRepository, type BillOutstandingItem } from './repositories/billCostBankRepository.js';
 export { PayrollRepository } from './repositories/payrollRepository.js';
 export {
+  StatutoryRepository,
+  type ExchangeRateRecord,
+  type StockItemGstHistoryRecord,
+  type PrintTemplateRecord,
+  type LockDateRecord,
+} from './repositories/statutoryRepository.js';
+export {
   CompanyRegistry,
   openRegistry,
   resolveDataPaths,

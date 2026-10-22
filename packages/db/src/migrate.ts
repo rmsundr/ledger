@@ -6,6 +6,7 @@ import { migration004 } from './migrations/004_inventory.js';
 import { migration005 } from './migrations/005_statutory.js';
 import { migration006 } from './migrations/006_payroll.js';
 import { migration007 } from './migrations/007_tally_and_utilities.js';
+import { migration008 } from './migrations/008_advanced.js';
 
 interface Migration {
   version: number;
@@ -48,6 +49,11 @@ const MIGRATIONS: Migration[] = [
     version: 7,
     description: 'Tally import maps, jobs & report configurations',
     sql: migration007,
+  },
+  {
+    version: 8,
+    description: 'Forex exchange rates, stock GST history, print templates, verification & locks',
+    sql: migration008,
   },
 ];
 

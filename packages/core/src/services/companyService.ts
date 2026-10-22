@@ -106,6 +106,18 @@ export class CompanyService {
     return this.openDb;
   }
 
+  /**
+   * Absolute path of the currently open company's database file.
+   * Needed by the backup service, which copies the file on disk.
+   */
+  getOpenDbPath(): string {
+    const reg = this.ensureRegistry();
+    if (!this.openRegistryId) throw new Error('No company is open');
+    const entry = reg.get(this.openRegistryId);
+    if (!entry) throw new Error('Open company is no longer in the registry');
+    return entry.db_path;
+  }
+
   getOpenRegistryId(): string | null {
     return this.openRegistryId;
   }

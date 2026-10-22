@@ -256,17 +256,48 @@ button {
   padding: 0.35rem 0.8rem;
   border: 1px solid var(--border-strong);
   background: var(--bg-elevated);
+  color: var(--text);
   border-radius: 2px;
+  font-weight: 500;
 }
 
 .btn.primary {
-  background: color-mix(in srgb, var(--accent) 35%, var(--bg-elevated));
+  background: var(--accent);
+  color: #0a1628;
   border-color: var(--accent);
+  font-weight: 600;
+}
+
+[data-theme='light'] .btn.primary {
+  color: #ffffff;
 }
 
 .btn.danger {
   border-color: var(--danger);
   color: var(--danger);
+}
+
+button:not([class]) {
+  min-height: calc(30px * var(--font-scale));
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 2px;
+  font-weight: 500;
+}
+
+button:not([class]).primary,
+button.primary {
+  background: var(--accent);
+  color: #0a1628;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+[data-theme='light'] button:not([class]).primary,
+[data-theme='light'] button.primary {
+  color: #ffffff;
 }
 
 .error {

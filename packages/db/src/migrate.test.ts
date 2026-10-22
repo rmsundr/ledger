@@ -24,8 +24,8 @@ describe('migrate + company create', () => {
     const db = openDatabase(path.join(dir, 't.db'));
     expect(getCurrentSchemaVersion(db)).toBe(0);
     const result = migrate(db);
-    expect(result.to).toBe(7);
-    expect(getCurrentSchemaVersion(db)).toBe(7);
+    expect(result.to).toBe(8);
+    expect(getCurrentSchemaVersion(db)).toBe(8);
     closeDatabase(db);
   });
 

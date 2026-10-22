@@ -13,6 +13,14 @@ interface ImportResult {
   ledgersImported: number;
   vouchersImported: number;
   vouchersSkipped: number;
+  costCategoriesImported: number;
+  costCentresImported: number;
+  unitsImported: number;
+  stockGroupsImported: number;
+  stockCategoriesImported: number;
+  godownsImported: number;
+  stockItemsImported: number;
+  batchesImported: number;
   errors: string[];
   reconciliation: {
     totalClosingDebit: number;
@@ -23,14 +31,24 @@ interface ImportResult {
 }
 
 export function TallyImportScreen({ session, onBack, onImportDone }: Props) {
-  const [tab, setTab] = useState<'import' | 'export' | 'native'>('import');
+  const [tab, setTab] = useState<'import' | 'export' | 'server' | 'native'>('import');
   const [xmlContent, setXmlContent] = useState('');
+  const [filePath, setFilePath] = useState('');
   const [result, setResult] = useState<ImportResult | null>(null);
   const [exportedXml, setExportedXml] = useState<string>('');
   const [nativePath, setNativePath] = useState('');
   const [nativeGuidance, setNativeGuidance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Tally XML server
+  const [serverHost, setServerHost] = useState('127.0.0.1');
+  const [serverPort, setServerPort] = useState('9000');
+  const [serverCompanies, setServerCompanies] = useState<{ name: string; number?: string }[]>([]);
+  const [serverCompany, setServerCompany] = useState('');
+  const [serverStatus, setServerStatus] = useState<string | null>(null);
+  const [serverFrom, setServerFrom] = useState('2023-04-01');
+  const [serverTo, setServerTo] = useState('2024-03-31');
 
   const doImport = async () => {
     if (!xmlContent.trim()) {
@@ -41,6 +59,34 @@ export function TallyImportScreen({ session, onBack, onImportDone }: Props) {
     setError(null);
     try {
       const res = (await window.ledgerdesk.importTallyXml(xmlContent)) as ImportResult;
+      setResult(res);
+      onImportDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pickFile = async () => {
+    setError(null);
+    try {
+      const picked = await window.ledgerdesk.pickTallyXmlFile(filePath || undefined);
+      if (picked) setFilePath(picked);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const doImportFile = async () => {
+    if (!filePath.trim()) {
+      setError('Please choose a Tally XML file first.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = (await window.ledgerdesk.importTallyXmlFile(filePath.trim())) as ImportResult;
       setResult(res);
       onImportDone();
     } catch (e) {
@@ -76,6 +122,63 @@ export function TallyImportScreen({ session, onBack, onImportDone }: Props) {
     }
   };
 
+  const serverConfig = () => ({
+    host: serverHost.trim() || '127.0.0.1',
+    port: Number(serverPort) || 9000,
+  });
+
+  const connectServer = async () => {
+    setLoading(true);
+    setError(null);
+    setServerStatus(null);
+    try {
+      const res = (await window.ledgerdesk.tallyServerListCompanies(serverConfig())) as {
+        ok: boolean;
+        error?: string;
+        companies?: { name: string; number?: string }[];
+      };
+      if (!res.ok) {
+        setServerStatus(res.error ?? 'Could not reach the Tally server.');
+        return;
+      }
+      const companies = res.companies ?? [];
+      setServerCompanies(companies);
+      if (companies.length === 1) setServerCompany(companies[0].name);
+      setServerStatus(
+        companies.length
+          ? `Connected. ${companies.length} compan${companies.length === 1 ? 'y' : 'ies'} available.`
+          : 'Connected, but Tally reported no companies.',
+      );
+    } catch (e) {
+      setServerStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const importFromServer = async (kind: 'masters' | 'daybook') => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const payload = {
+        companyName: serverCompany,
+        fromDate: serverFrom,
+        toDate: serverTo,
+        config: serverConfig(),
+      };
+      const res = (await window.ledgerdesk[
+        kind === 'masters' ? 'tallyServerImportMasters' : 'tallyServerImportDayBook'
+      ](payload)) as ImportResult;
+      setResult(res);
+      onImportDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const actions = useMemo(
     () => [
       {
@@ -106,8 +209,11 @@ export function TallyImportScreen({ session, onBack, onImportDone }: Props) {
           <button className={tab === 'export' ? 'primary' : ''} onClick={() => setTab('export')}>
             2. Export to Tally XML
           </button>
+          <button className={tab === 'server' ? 'primary' : ''} onClick={() => setTab('server')}>
+            3. Tally XML Server
+          </button>
           <button className={tab === 'native' ? 'primary' : ''} onClick={() => setTab('native')}>
-            3. Native Backup (.900)
+            4. Native Backup (.900)
           </button>
           <button onClick={onBack}>Back (Esc)</button>
         </div>
@@ -118,10 +224,38 @@ export function TallyImportScreen({ session, onBack, onImportDone }: Props) {
       <div style={{ flex: 1, border: '1px solid var(--border)', background: 'var(--bg-surface)', padding: '1rem', overflowY: 'auto' }}>
         {tab === 'import' && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem' }}>
+            <div
+              style={{
+                border: '1px solid var(--border)',
+                background: 'var(--bg-elevated)',
+                padding: '0.75rem',
+              }}
+            >
+              <strong>Import From File (recommended for large exports)</strong>
+              <p style={{ margin: '4px 0 8px 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                DayBook exports are often hundreds of megabytes. Choose the XML file and LedgerDesk streams it
+                straight from disk, so it never has to fit in memory.
+              </p>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="/path/to/DayBook.xml"
+                  value={filePath}
+                  onChange={(e) => setFilePath(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button onClick={() => void pickFile()}>Browse…</button>
+                <button className="primary" disabled={loading || !filePath.trim()} onClick={() => void doImportFile()}>
+                  {loading ? 'Importing...' : 'Import File'}
+                </button>
+              </div>
+            </div>
+
             <div>
               <strong>Paste Tally XML Content</strong>
               <p style={{ margin: '4px 0 8px 0', fontSize: '12px', color: 'var(--text-muted)' }}>
                 Exported from Tally ERP 9 via: <em>Gateway of Tally &gt; Export &gt; Data &gt; XML</em>.
+                Only suitable for small master exports.
               </p>
               <textarea
                 value={xmlContent}
@@ -158,6 +292,46 @@ export function TallyImportScreen({ session, onBack, onImportDone }: Props) {
                     <div style={{ fontSize: '18px', fontWeight: 700 }}>{result.vouchersSkipped}</div>
                   </div>
                 </div>
+
+                {(() => {
+                  const costStats = [
+                    { label: 'Cost Categories', value: result.costCategoriesImported ?? 0 },
+                    { label: 'Cost Centres', value: result.costCentresImported ?? 0 },
+                    { label: 'Units', value: result.unitsImported ?? 0 },
+                    { label: 'Stock Groups', value: result.stockGroupsImported ?? 0 },
+                    { label: 'Stock Categories', value: result.stockCategoriesImported ?? 0 },
+                    { label: 'Godowns', value: result.godownsImported ?? 0 },
+                    { label: 'Stock Items', value: result.stockItemsImported ?? 0 },
+                    { label: 'Batches', value: result.batchesImported ?? 0 },
+                  ];
+                  const totalCostStats = costStats.reduce((s, c) => s + c.value, 0);
+                  if (totalCostStats === 0) return null;
+                  return (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <strong style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                        COST &amp; INVENTORY DATA IMPORTED
+                      </strong>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(4, 1fr)',
+                          gap: '0.5rem',
+                          marginTop: '0.35rem',
+                        }}
+                      >
+                        {costStats.map((c) => (
+                          <div
+                            key={c.label}
+                            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '0.4rem 0.5rem' }}
+                          >
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{c.label}</span>
+                            <div style={{ fontSize: '15px', fontWeight: 700 }}>{c.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div
                   style={{
@@ -213,6 +387,150 @@ export function TallyImportScreen({ session, onBack, onImportDone }: Props) {
                   value={exportedXml}
                   style={{ flex: 1, width: '100%', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
                 />
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'server' && (
+          <div style={{ maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div>
+              <h3 style={{ marginTop: 0 }}>Import from a running Tally (XML Server)</h3>
+              <p style={{ fontSize: '13px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                This is the way to bring in data that only exists in Tally's own native format (the
+                <code> .001</code>/<code>.002</code> files in a company folder), because Tally serves that data
+                itself as XML. In Tally press <em>F12 &gt; Advanced Configurations &gt; "Tally acts as"</em> and set it
+                to <em>Both</em> or <em>Server</em>, then open the company.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <label style={{ fontSize: '12px' }}>Host</label>
+              <input
+                type="text"
+                value={serverHost}
+                onChange={(e) => setServerHost(e.target.value)}
+                style={{ width: '140px' }}
+              />
+              <label style={{ fontSize: '12px' }}>Port</label>
+              <input
+                type="text"
+                value={serverPort}
+                onChange={(e) => setServerPort(e.target.value)}
+                style={{ width: '80px' }}
+              />
+              <button className="primary" disabled={loading} onClick={() => void connectServer()}>
+                {loading ? 'Connecting...' : 'Connect'}
+              </button>
+            </div>
+
+            {serverStatus && (
+              <div
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  padding: '0.5rem',
+                  fontSize: '12px',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {serverStatus}
+              </div>
+            )}
+
+            {serverCompanies.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', minWidth: '70px' }}>Company</label>
+                  <select
+                    value={serverCompany}
+                    onChange={(e) => setServerCompany(e.target.value)}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="">(select a company)</option>
+                    {serverCompanies.map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                        {c.number ? ` (${c.number})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px' }}>From</label>
+                  <input type="date" value={serverFrom} onChange={(e) => setServerFrom(e.target.value)} />
+                  <label style={{ fontSize: '12px' }}>To</label>
+                  <input type="date" value={serverTo} onChange={(e) => setServerTo(e.target.value)} />
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="primary"
+                    disabled={loading || !serverCompany}
+                    onClick={() => void importFromServer('masters')}
+                  >
+                    Import Masters
+                  </button>
+                  <button
+                    disabled={loading || !serverCompany}
+                    onClick={() => void importFromServer('daybook')}
+                  >
+                    Import Day Book ({serverFrom} → {serverTo})
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {result && (
+              <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', padding: '1rem' }}>
+                <h4 style={{ margin: '0 0 0.5rem 0' }}>Import Reconciliation Report</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ background: 'var(--bg-surface)', padding: '0.5rem' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Groups Created</span>
+                    <div style={{ fontSize: '18px', fontWeight: 700 }}>{result.groupsImported}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg-surface)', padding: '0.5rem' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ledgers Created</span>
+                    <div style={{ fontSize: '18px', fontWeight: 700 }}>{result.ledgersImported}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg-surface)', padding: '0.5rem' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Vouchers Imported</span>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#10b981' }}>{result.vouchersImported}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg-surface)', padding: '0.5rem' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Vouchers Skipped</span>
+                    <div style={{ fontSize: '18px', fontWeight: 700 }}>{result.vouchersSkipped}</div>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: '0.5rem',
+                    background: result.reconciliation.isBalanced ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.2)',
+                    border: `1px solid ${result.reconciliation.isBalanced ? '#10b981' : '#ef4444'}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span>
+                    <strong>Trial Balance: </strong>
+                    {result.reconciliation.isBalanced ? '✓ Reconciled & Balanced' : '⚠ Out of balance'}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>
+                    Total Dr: ₹{(result.reconciliation.totalClosingDebit / 100).toFixed(2)} | Total Cr: ₹
+                    {(result.reconciliation.totalClosingCredit / 100).toFixed(2)}
+                  </span>
+                </div>
+                {result.errors.length > 0 && (
+                  <div style={{ marginTop: '0.75rem', fontSize: '12px', color: '#f87171' }}>
+                    <strong>Notices:</strong>
+                    <ul>
+                      {result.errors.map((e, idx) => (
+                        <li key={idx}>{e}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>

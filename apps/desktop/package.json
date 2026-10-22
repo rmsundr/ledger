@@ -1,8 +1,14 @@
 {
   "name": "@ledgerdesk/desktop",
+  "productName": "LedgerDesk",
   "version": "0.1.0",
   "private": true,
   "description": "LedgerDesk desktop shell",
+  "author": {
+    "name": "LedgerDesk",
+    "email": "support@ledgerdesk.local"
+  },
+  "homepage": "https://ledgerdesk.local",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
@@ -10,24 +16,27 @@
     "build": "tsc -p tsconfig.node.json && vite build && tsc -p tsconfig.electron.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "preview": "vite preview",
-    "postinstall": "electron-builder install-app-deps || true"
+    "postinstall": "electron-builder install-app-deps || true",
+    "package": "electron-builder --config electron-builder.json",
+    "package:dir": "electron-builder --config electron-builder.json --dir"
   },
   "dependencies": {
-    "@ledgerdesk/core": "*",
-    "@ledgerdesk/db": "*",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "zod": "^3.24.1"
+    "better-sqlite3": "^11.8.1"
   },
   "devDependencies": {
+    "@ledgerdesk/core": "*",
+    "@ledgerdesk/db": "*",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.3.1",
     "electron-builder": "^25.1.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
     "vite-plugin-electron": "^0.28.8",
-    "vite-plugin-electron-renderer": "^0.14.6"
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "zod": "^3.24.1"
   }
 }

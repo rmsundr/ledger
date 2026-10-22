@@ -132,7 +132,6 @@ function Shell() {
               session={session}
               onNavigate={setScreen}
               onShut={() => void shutCompany()}
-              onQuit={quit}
               onChangeDate={changeDate}
             />
           )}
@@ -244,3 +243,5 @@ export default function App() {
     </KeyboardProvider>
   );
 }
+
+export { App };

@@ -4,6 +4,8 @@ import type {
   EmployeeRecord,
   EmployeeSalaryStructureRecord,
   PayHeadRecord,
+  PayrollLineRecord,
+  PayrollRunRecord,
 } from '../types.js';
 
 export class PayrollRepository {
@@ -134,5 +136,93 @@ export class PayrollRepository {
       WHERE company_id = ? AND employee_id = ? AND date LIKE ? AND attendance_type = 'Present'
     `).get(companyId, employeeId, `${yearMonth}%`) as { present_days: number };
     return row.present_days;
+  }
+
+  // Salary structure as of a given date (latest effective_from on or before `asOf`)
+  getSalaryStructureAsOf(employeeId: string, asOf: string): (EmployeeSalaryStructureRecord & { pay_head_name: string; pay_head_type: string; calculation_type: string; attendance_type: string | null; computation_formula: string | null })[] {
+    return this.db.prepare(`
+      SELECT ess.*, ph.name AS pay_head_name, ph.pay_head_type,
+             ph.calculation_type, ph.attendance_type, ph.computation_formula
+      FROM employee_salary_structure ess
+      JOIN pay_head ph ON ess.pay_head_id = ph.id
+      WHERE ess.employee_id = ?
+        AND ess.effective_from <= ?
+        AND ess.effective_from = (
+          SELECT MAX(e2.effective_from) FROM employee_salary_structure e2
+          WHERE e2.employee_id = ess.employee_id
+            AND e2.pay_head_id = ess.pay_head_id
+            AND e2.effective_from <= ?
+        )
+    `).all(employeeId, asOf, asOf) as any;
+  }
+
+  // Payroll Runs
+  createPayrollRun(input: {
+    companyId: string;
+    periodMonth: string;
+    voucherId?: string;
+    totalGross: number;
+    totalDeductions: number;
+    totalNet: number;
+  }): { id: string } {
+    const id = newId();
+    this.db.prepare(`
+      INSERT INTO payroll_run (id, company_id, period_month, voucher_id, total_gross, total_deductions, total_net)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.companyId,
+      input.periodMonth,
+      input.voucherId ?? null,
+      input.totalGross,
+      input.totalDeductions,
+      input.totalNet,
+    );
+    return { id };
+  }
+
+  createPayrollLine(input: {
+    payrollRunId: string;
+    employeeId: string;
+    grossPay: number;
+    deductions: number;
+    netPay: number;
+    breakdownJson: string;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO payroll_line (id, payroll_run_id, employee_id, gross_pay, deductions, net_pay, breakdown_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      newId(),
+      input.payrollRunId,
+      input.employeeId,
+      input.grossPay,
+      input.deductions,
+      input.netPay,
+      input.breakdownJson,
+    );
+  }
+
+  getPayrollRun(companyId: string, periodMonth: string): (PayrollRunRecord & { lines?: PayrollLineRecord[] }) | undefined {
+    const run = this.db.prepare(`
+      SELECT * FROM payroll_run WHERE company_id = ? AND period_month = ?
+    `).get(companyId, periodMonth) as PayrollRunRecord | undefined;
+    if (!run) return undefined;
+
+    const lines = this.db.prepare(`
+      SELECT pl.*, e.name AS employee_name, e.emp_code, e.bank_account_no, e.bank_name, e.bank_ifsc, e.pan, e.uan
+      FROM payroll_line pl
+      JOIN employee e ON pl.employee_id = e.id
+      WHERE pl.payroll_run_id = ?
+      ORDER BY e.name
+    `).all(run.id) as any[];
+
+    return { ...run, lines };
+  }
+
+  listPayrollRuns(companyId: string): PayrollRunRecord[] {
+    return this.db.prepare(`
+      SELECT * FROM payroll_run WHERE company_id = ? ORDER BY period_month DESC
+    `).all(companyId) as PayrollRunRecord[];
   }
 }

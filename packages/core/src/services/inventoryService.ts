@@ -7,6 +7,13 @@ import {
   type UnitRecord,
 } from '@ledgerdesk/db';
 import { z } from 'zod';
+import {
+  explodeBom,
+  valueStockMovements,
+  type BomComponent,
+  type CostingMethod,
+  type ValuationResult as StockValuation,
+} from './stockValuation.js';
 
 export const createUnitSchema = z.object({
   symbol: z.string().min(1, 'Symbol is required'),
@@ -71,5 +78,87 @@ export class InventoryService {
   createStockItem(companyId: string, raw: z.infer<typeof createStockItemSchema>): StockItemRecord {
     const input = createStockItemSchema.parse(raw);
     return this.repo.createStockItem({ ...input, companyId });
+  }
+
+  /**
+   * Value a stock item's closing stock using its costing method.
+   */
+  valueStockItem(
+    companyId: string,
+    stockItemId: string,
+    asOfDate?: string,
+  ): StockValuation {
+    const item = this.repo.getStockItem(companyId, stockItemId);
+    if (!item) throw new Error(`Stock item not found: ${stockItemId}`);
+
+    const movements = this.repo.getStockMovements(companyId, stockItemId, asOfDate);
+
+    // The opening balance is the first layer.
+    const withOpening =
+      item.opening_quantity > 0
+        ? [
+            {
+              id: `opening:${item.id}`,
+              date: '0000-01-01',
+              direction: 'Inward' as const,
+              quantity: item.opening_quantity,
+              rate: item.opening_rate,
+              amount: item.opening_value,
+              value: item.opening_value,
+              godownId: item.opening_godown_id ?? null,
+              batchId: null,
+            },
+            ...movements,
+          ]
+        : movements;
+
+    return valueStockMovements(withOpening, {
+      costingMethod: item.costing_method as CostingMethod,
+      standardRate: item.opening_rate,
+      allowNegativeStock: false,
+    });
+  }
+
+  /**
+   * Value every stock item, returning closing quantity and value per item.
+   */
+  valueAllStockItems(companyId: string, asOfDate?: string) {
+    const items = this.repo.listStockItems(companyId);
+    return items.map((item) => {
+      const valuation = this.valueStockItem(companyId, item.id, asOfDate);
+      return {
+        stockItemId: item.id,
+        name: item.name,
+        unitSymbol: item.unit_symbol,
+        costingMethod: item.costing_method,
+        closingQuantity: valuation.closingQuantity,
+        closingValue: valuation.closingValue,
+        averageRate: valuation.averageRate,
+        negativeStockEvents: valuation.negativeStockEvents,
+      };
+    });
+  }
+
+  /**
+   * Explode a bill of materials for a produced item and quantity.
+   */
+  explodeBom(companyId: string, stockItemId: string, producedQuantity: number) {
+    const boms = this.repo.getBoms(companyId, stockItemId);
+    if (boms.length === 0) {
+      throw new Error(`No bill of materials defined for stock item ${stockItemId}`);
+    }
+
+    const bom = boms[0];
+    const components = JSON.parse(bom.components_json) as BomComponent[];
+
+    // `produced_qty` is the output quantity for one BOM run, so scale the
+    // requested quantity against it.
+    const batches = producedQuantity / (bom.produced_qty || 1);
+
+    return explodeBom({
+      producedItemId: stockItemId,
+      producedQuantity: batches,
+      components,
+    });
   }
 }

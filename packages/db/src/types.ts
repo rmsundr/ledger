@@ -281,6 +281,8 @@ export interface InterestRuleRecord {
   interest_style: '365-day Year' | '360-day Year' | 'Calendar Month' | 'Calendar Year';
   calculate_from: 'Voucher Date' | 'Due Date';
   grace_days: number;
+  /** 1 when the ledger's balance is a receivable, 0 when it is a payable. */
+  is_receivable: number;
 }
 
 export interface UnitRecord {

@@ -54,13 +54,45 @@ export type LedgerDeskApi = {
   // Statutory & Payroll
   calculateGst: (params: unknown) => Promise<unknown>;
   getGstr1: (fromDate: string, toDate: string) => Promise<unknown>;
+  getGstr3b: (taxPeriod: string) => Promise<unknown>;
+  buildEInvoice: (voucherId: string) => Promise<unknown>;
+  buildEwayBill: (voucherId: string) => Promise<unknown>;
   listEmployees: () => Promise<unknown[]>;
   createEmployee: (payload: unknown) => Promise<unknown>;
 
   // Tally Import & Export
   importTallyXml: (xmlString: string) => Promise<unknown>;
+  importTallyXmlFile: (filePath: string) => Promise<unknown>;
+  pickTallyXmlFile: (defaultPath?: string) => Promise<string | null>;
   exportTallyXml: () => Promise<string>;
   detectTallyPath: (targetPath: string) => Promise<unknown>;
+
+  // Tally XML server (the route to data held in Tally's native format)
+  tallyServerListCompanies: (config?: unknown) => Promise<unknown>;
+  tallyServerPing: (config?: unknown) => Promise<unknown>;
+  tallyServerImportMasters: (payload: unknown) => Promise<unknown>;
+  tallyServerImportDayBook: (payload: unknown) => Promise<unknown>;
+
+  // Backup & Restore
+  createBackup: (note?: string) => Promise<unknown>;
+  listBackups: () => Promise<unknown[]>;
+  restoreBackup: (backupPath: string) => Promise<{ ok: boolean }>;
+
+  // Audit
+  auditLog: (action: string, entityType: string, entityId: string, details?: unknown) => Promise<{ ok: boolean }>;
+  verifyAuditChain: () => Promise<unknown>;
+
+  // Interest
+  listInterestRules: () => Promise<unknown[]>;
+  saveInterestRule: (input: unknown) => Promise<unknown>;
+  deleteInterestRule: (ledgerId: string) => Promise<{ ok: boolean }>;
+  computeInterest: (asOfDate: string, interestLedgerId: string, incomeLedgerId: string) => Promise<unknown>;
+
+  // Payroll
+  runPayroll: (periodMonth: string) => Promise<unknown>;
+  getPayrollRun: (periodMonth: string) => Promise<unknown>;
+  listPayrollRuns: () => Promise<unknown[]>;
+  buildBankTransferCsv: (periodMonth: string) => Promise<string>;
 };
 
 const api: LedgerDeskApi = {
@@ -106,12 +138,39 @@ const api: LedgerDeskApi = {
 
   calculateGst: (params) => ipcRenderer.invoke('statutory:calcGst', params),
   getGstr1: (fromDate, toDate) => ipcRenderer.invoke('statutory:gstr1', fromDate, toDate),
+  getGstr3b: (taxPeriod) => ipcRenderer.invoke('statutory:gstr3b', taxPeriod),
+  buildEInvoice: (voucherId) => ipcRenderer.invoke('statutory:buildEInvoice', voucherId),
+  buildEwayBill: (voucherId) => ipcRenderer.invoke('statutory:buildEwayBill', voucherId),
   listEmployees: () => ipcRenderer.invoke('payroll:listEmployees'),
   createEmployee: (payload) => ipcRenderer.invoke('payroll:createEmployee', payload),
 
   importTallyXml: (xmlString) => ipcRenderer.invoke('tally:importXml', xmlString),
+  importTallyXmlFile: (filePath) => ipcRenderer.invoke('tally:importXmlFile', filePath),
+  pickTallyXmlFile: (defaultPath) => ipcRenderer.invoke('tally:pickXmlFile', defaultPath),
   exportTallyXml: () => ipcRenderer.invoke('tally:exportXml'),
   detectTallyPath: (targetPath) => ipcRenderer.invoke('tally:detect', targetPath),
+
+  tallyServerListCompanies: (config) => ipcRenderer.invoke('tally:serverListCompanies', config),
+  tallyServerPing: (config) => ipcRenderer.invoke('tally:serverPing', config),
+  tallyServerImportMasters: (payload) => ipcRenderer.invoke('tally:serverImportMasters', payload),
+  tallyServerImportDayBook: (payload) => ipcRenderer.invoke('tally:serverImportDayBook', payload),
+
+  createBackup: (note) => ipcRenderer.invoke('backup:create', note),
+  listBackups: () => ipcRenderer.invoke('backup:list'),
+  restoreBackup: (backupPath) => ipcRenderer.invoke('backup:restore', backupPath),
+
+  auditLog: (action, entityType, entityId, details) => ipcRenderer.invoke('audit:log', action, entityType, entityId, details),
+  verifyAuditChain: () => ipcRenderer.invoke('audit:verify'),
+
+  listInterestRules: () => ipcRenderer.invoke('interest:listRules'),
+  saveInterestRule: (input) => ipcRenderer.invoke('interest:saveRule', input),
+  deleteInterestRule: (ledgerId) => ipcRenderer.invoke('interest:deleteRule', ledgerId),
+  computeInterest: (asOfDate, interestLedgerId, incomeLedgerId) => ipcRenderer.invoke('interest:compute', asOfDate, interestLedgerId, incomeLedgerId),
+
+  runPayroll: (periodMonth) => ipcRenderer.invoke('payroll:runPayroll', periodMonth),
+  getPayrollRun: (periodMonth) => ipcRenderer.invoke('payroll:getPayrollRun', periodMonth),
+  listPayrollRuns: () => ipcRenderer.invoke('payroll:listPayrollRuns'),
+  buildBankTransferCsv: (periodMonth) => ipcRenderer.invoke('payroll:buildBankTransferCsv', periodMonth),
 };
 
 contextBridge.exposeInMainWorld('ledgerdesk', api);
